@@ -5,12 +5,12 @@ package playdoc
 
 import scala.collection.immutable.Seq
 import scala.meta._
-import scala.util.Try
+import scala.util._
 
 case class Route (
   method: String,
   path: Seq[Path],
-  action: Action
+  action: ActionCall
 )
 
 case class Path (
@@ -27,26 +27,27 @@ case class Path (
     }
 }
 
-case class Action (
+case class ActionCall (
   controller: Term.Name,
   method: Term.Name,
-  params: Option[Seq[Seq[Term.Arg]]]
+  params: Option[Seq[Term.Arg]]
 )
 
 object RouteParser {
   def parse (rawRoute: String) = {
-    val route = """^(\S+)\s+(\S+)\s+(\S+)$""".r
-     Try {
-       rawRoute match {
-         case route(method, rawPath, rawAction) =>
-           for {
-             path <- parsePath(rawPath)
-             action <- parseAction(rawAction)
-           } yield {
-             Route(method, path, action)
-           }
-       }
-     }
+    val comment = """^#(.+)$""".r
+    val route = """^(\S+)\s+(\S+)\s+(.+)$""".r
+    rawRoute match {
+      case comment(c) => Success(None)
+      case route(method, rawPath, rawAction) =>
+        for {
+          path <- parsePath(rawPath)
+          action <- parseAction(rawAction)
+        } yield {
+          Route(method, path, action)
+        }
+      case _ => Failure
+    }
   }
 
   private def parsePath (rawPath: String) = {
@@ -71,8 +72,13 @@ object RouteParser {
   private def parseAction (rawAction: String) = {
     Try {
       rawAction.parse[Stat].get match {
-        case q"$controllers.$controller.$method" => Action(controller, method, None)
-        case q"$controllers.$controller.$method(...$aexprssnel)" => Action(controller, method, Some(aexprssnel))
+        case q"$controllers.$controller.$method" => ActionCall(controller, method, None)
+        case q"$controllers.$controller.$method(..$params)" => {
+          params match {
+            case Nil => ActionCall(controller, method, None)
+            case head::tail => ActionCall(controller, method, Some(params))
+          }
+        }
       }
     }
   }
